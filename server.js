@@ -135,6 +135,77 @@ const getWeatherByCity = async (req, res) => {
   }
 };
 
+// 依經緯度反查所在縣市（使用 OpenStreetMap Nominatim）
+const reverseGeocode = async (req, res) => {
+  try {
+    const { lat, lng } = req.query;
+
+    if (!lat || !lng) {
+      return res.status(400).json({
+        success: false,
+        error: "參數錯誤",
+        message: "請提供 lat 和 lng，例如 /api/reverse-geocode?lat=...&lng=...",
+      });
+    }
+
+    const response = await axios.get(
+      "https://nominatim.openstreetmap.org/reverse",
+      {
+        params: {
+          format: "jsonv2",
+          lat,
+          lon: lng,
+          "accept-language": "zh-TW", // 要中文地址
+        },
+        headers: {
+          // 建議換成你自己的 email
+          "User-Agent": "CWA-Weather-Demo (example@example.com)",
+        },
+      }
+    );
+
+    const data = response.data;
+    const address = data.address || {};
+
+    // 優先順序：city > county > state
+    const cityName =
+      address.city || address.county || address.state || "";
+
+    if (!cityName) {
+      return res.status(404).json({
+        success: false,
+        error: "查無城市名稱",
+        message: "無法從座標取得城市資訊",
+        raw: data,
+      });
+    }
+
+    // 如果有需要，你可以在這裡做進一步格式調整，例如只保留「高雄市」、「台北市」這種
+    // 目前先直接回傳 cityName
+    return res.json({
+      success: true,
+      city: cityName,
+      raw: data, // 想除錯時可以看，前端用不到可以不理它
+    });
+  } catch (error) {
+    console.error("Reverse geocode 失敗:", error.message);
+
+    if (error.response) {
+      return res.status(error.response.status).json({
+        success: false,
+        error: "ReverseGeocode API 錯誤",
+        message: error.response.data?.error || "無法取得縣市資訊",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: "伺服器錯誤",
+      message: "無法取得縣市資訊，請稍後再試",
+    });
+  }
+};
+
 // Routes
 app.get("/", (req, res) => {
   res.json({
