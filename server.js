@@ -80,7 +80,6 @@ const getWeatherByCity = async (req, res) => {
         minTemp: "",
         maxTemp: "",
         comfort: "",
-        windSpeed: "",
       };
 
       weatherElements.forEach((element) => {
@@ -101,9 +100,7 @@ const getWeatherByCity = async (req, res) => {
           case "CI":
             forecast.comfort = value.parameterName;
             break;
-          case "WS":
-            forecast.windSpeed = value.parameterName;
-            break;
+          // ✅ F-C0032-001 沒有風速欄位，已移除 WS
         }
       });
 
