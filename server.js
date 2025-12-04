@@ -211,10 +211,10 @@ app.get("/", (req, res) => {
   res.json({
     message: "歡迎使用 CWA 天氣預報 API",
     endpoints: {
-      // 範例：/api/weather?city=高雄市
       weather: "/api/weather?city=高雄市",
       health: "/api/health",
       kaohsiungShortcut: "/api/weather/kaohsiung",
+      reverseGeocode: "/api/reverse-geocode?lat=...&lng=...",
     },
   });
 });
@@ -223,10 +223,13 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "OK", timestamp: new Date().toISOString() });
 });
 
-// 通用：依城市取得天氣，例如 /api/weather?city=高雄市
+// 依經緯度查縣市
+app.get("/api/reverse-geocode", reverseGeocode);
+
+// 通用：依城市取得天氣
 app.get("/api/weather", getWeatherByCity);
 
-// 範例：固定高雄市的捷徑路徑（可用可不用）
+// 固定高雄市捷徑
 app.get("/api/weather/kaohsiung", (req, res) => {
   req.query.city = "高雄市";
   getWeatherByCity(req, res);
