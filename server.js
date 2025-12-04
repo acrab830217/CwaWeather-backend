@@ -16,6 +16,31 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /**
+ * 小工具：把 Nominatim 回傳的城市名稱修正成 CWA 可用格式
+ * - 優先用「county」（例如 新北市），避免拿到「板橋區」
+ * - 把「台北市/台中市/台南市/台東縣」改成 CWA 使用的「臺」
+ */
+function normalizeTaiwanCityName(rawName) {
+  if (!rawName) return "";
+
+  let name = rawName.trim();
+
+  // 常見的「台」→「臺」對應
+  const mapping = {
+    "台北市": "臺北市",
+    "台中市": "臺中市",
+    "台南市": "臺南市",
+    "台東縣": "臺東縣",
+  };
+
+  if (mapping[name]) {
+    return mapping[name];
+  }
+
+  return name;
+}
+
+/**
  * 依城市名稱取得今明 36 小時天氣預報
  * 使用 CWA「一般天氣預報-今明 36 小時天氣預報」資料集
  * 範例：/api/weather?city=高雄市
@@ -40,9 +65,11 @@ const getWeatherByCity = async (req, res) => {
       });
     }
 
+    console.log("[getWeatherByCity] 查詢城市:", city);
+
     // 呼叫 CWA API
     const response = await axios.get(
-      `${CWA_API_BASE_URL}/v1/rest/datastore/F-C0032-001`,
+      CWA_API_BASE_URL + "/v1/rest/datastore/F-C0032-001",
       {
         params: {
           Authorization: CWA_API_KEY,
@@ -51,12 +78,18 @@ const getWeatherByCity = async (req, res) => {
       }
     );
 
-    const records = response.data.records;
+    const records = response.data && response.data.records;
 
-    if (!records || !records.location || records.location.length === 0) {
+    if (
+      !records ||
+      !records.location ||
+      !Array.isArray(records.location) ||
+      records.location.length === 0
+    ) {
+      console.warn("[getWeatherByCity] CWA 無對應資料，city =", city);
       return res.status(404).json({
         error: "查無資料",
-        message: `無法取得 ${city} 天氣資料`,
+        message: "無法取得「" + city + "」的天氣資料（可能是城市名稱不符合 CWA 格式）",
       });
     }
 
@@ -119,15 +152,14 @@ const getWeatherByCity = async (req, res) => {
     console.error("取得天氣資料失敗:", error.message);
 
     if (error.response) {
-      // API 回應錯誤
+      const respData = error.response.data || {};
       return res.status(error.response.status).json({
         error: "CWA API 錯誤",
-        message: error.response.data?.message || "無法取得天氣資料",
-        details: error.response.data,
+        message: respData.message || "無法取得天氣資料",
+        details: respData,
       });
     }
 
-    // 其他錯誤
     return res.status(500).json({
       error: "伺服器錯誤",
       message: "無法取得天氣資料，請稍後再試",
@@ -138,40 +170,45 @@ const getWeatherByCity = async (req, res) => {
 // 依經緯度反查所在縣市（使用 OpenStreetMap Nominatim）
 const reverseGeocode = async (req, res) => {
   try {
-    const { lat, lng } = req.query;
+    const lat = req.query.lat;
+    const lng = req.query.lng;
 
     if (!lat || !lng) {
       return res.status(400).json({
         success: false,
         error: "參數錯誤",
-        message: "請提供 lat 和 lng，例如 /api/reverse-geocode?lat=...&lng=...",
+        message:
+          "請提供 lat 和 lng，例如 /api/reverse-geocode?lat=25.0478&lng=121.5319",
       });
     }
+
+    console.log("[reverseGeocode] 座標:", lat, lng);
 
     const response = await axios.get(
       "https://nominatim.openstreetmap.org/reverse",
       {
         params: {
           format: "jsonv2",
-          lat,
+          lat: lat,
           lon: lng,
           "accept-language": "zh-TW", // 要中文地址
         },
         headers: {
-          // 建議換成你自己的 email
-          "User-Agent": "CWA-Weather-Demo (example@example.com)",
+          // 建議換成你自己的 email（Nominatim 要求 User-Agent 有聯絡資訊）
+          "User-Agent": "CWA-Weather-Demo (service@example.com)",
         },
       }
     );
 
-    const data = response.data;
+    const data = response.data || {};
     const address = data.address || {};
 
-    // 優先順序：city > county > state
-    const cityName =
-      address.city || address.county || address.state || "";
+    // ⚠️ 這邊改成優先用 county（通常是「新北市」、「高雄市」這種）
+    let rawCityName =
+      address.county || address.city || address.state || "";
 
-    if (!cityName) {
+    if (!rawCityName) {
+      console.warn("[reverseGeocode] 沒拿到城市名稱，address =", address);
       return res.status(404).json({
         success: false,
         error: "查無城市名稱",
@@ -180,21 +217,29 @@ const reverseGeocode = async (req, res) => {
       });
     }
 
-    // 如果有需要，你可以在這裡做進一步格式調整，例如只保留「高雄市」、「台北市」這種
-    // 目前先直接回傳 cityName
+    const normalizedCity = normalizeTaiwanCityName(rawCityName);
+
+    console.log(
+      "[reverseGeocode] 原始城市名稱 =",
+      rawCityName,
+      "→ 正規化後 =",
+      normalizedCity
+    );
+
     return res.json({
       success: true,
-      city: cityName,
-      raw: data, // 想除錯時可以看，前端用不到可以不理它
+      city: normalizedCity,
+      raw: data, // 想除錯時可以看，前端實際上用不到
     });
   } catch (error) {
     console.error("Reverse geocode 失敗:", error.message);
 
     if (error.response) {
+      const respData = error.response.data || {};
       return res.status(error.response.status).json({
         success: false,
         error: "ReverseGeocode API 錯誤",
-        message: error.response.data?.error || "無法取得縣市資訊",
+        message: respData.error || "無法取得縣市資訊",
       });
     }
 
@@ -214,7 +259,7 @@ app.get("/", (req, res) => {
       weather: "/api/weather?city=高雄市",
       health: "/api/health",
       kaohsiungShortcut: "/api/weather/kaohsiung",
-      reverseGeocode: "/api/reverse-geocode?lat=...&lng=...",
+      reverseGeocode: "/api/reverse-geocode?lat=25.0478&lng=121.5319",
     },
   });
 });
@@ -252,6 +297,6 @@ app.use((req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 伺服器運行已運作，PORT: ${PORT}`);
-  console.log(`📍 環境: ${process.env.NODE_ENV || "development"}`);
+  console.log("🚀 伺服器運行已運作，PORT:", PORT);
+  console.log("📍 環境:", process.env.NODE_ENV || "development");
 });
