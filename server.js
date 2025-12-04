@@ -182,8 +182,9 @@ const reverseGeocode = async (req, res) => {
       });
     }
 
-    console.log("[reverseGeocode] 座標:", lat, lng);
+    console.log("[reverseGeocode] 收到座標:", lat, lng);
 
+    // 這裡先不用自訂 headers，改用預設 User-Agent，避免被 Nominatim 擋掉
     const response = await axios.get(
       "https://nominatim.openstreetmap.org/reverse",
       {
@@ -191,11 +192,8 @@ const reverseGeocode = async (req, res) => {
           format: "jsonv2",
           lat: lat,
           lon: lng,
-          "accept-language": "zh-TW", // 要中文地址
-        },
-        headers: {
-          // 建議換成你自己的 email（Nominatim 要求 User-Agent 有聯絡資訊）
-          "User-Agent": "CWA-Weather-Demo (service@example.com)",
+          "accept-language": "zh-TW",
+          addressdetails: 1,
         },
       }
     );
@@ -203,12 +201,19 @@ const reverseGeocode = async (req, res) => {
     const data = response.data || {};
     const address = data.address || {};
 
-    // ⚠️ 這邊改成優先用 county（通常是「新北市」、「高雄市」這種）
+    console.log("[reverseGeocode] Nominatim 回傳地址:", address);
+
+    // 優先用 county（通常是「新北市」、「高雄市」），再 fallback
     let rawCityName =
-      address.county || address.city || address.state || "";
+      address.county ||
+      address.city ||
+      address.town ||
+      address.city_district ||
+      address.state ||
+      "";
 
     if (!rawCityName) {
-      console.warn("[reverseGeocode] 沒拿到城市名稱，address =", address);
+      console.warn("[reverseGeocode] 無法從 address 解析城市名稱");
       return res.status(404).json({
         success: false,
         error: "查無城市名稱",
@@ -217,29 +222,50 @@ const reverseGeocode = async (req, res) => {
       });
     }
 
-    const normalizedCity = normalizeTaiwanCityName(rawCityName);
+    // 簡單做個「台→臺」轉換，方便丟給 CWA 用
+    const mapping = {
+      "台北市": "臺北市",
+      "台中市": "臺中市",
+      "台南市": "臺南市",
+      "台東縣": "臺東縣",
+    };
+    const normalizedCity = mapping[rawCityName] || rawCityName;
 
     console.log(
-      "[reverseGeocode] 原始城市名稱 =",
+      "[reverseGeocode] rawCityName =",
       rawCityName,
-      "→ 正規化後 =",
+      "→ normalizedCity =",
       normalizedCity
     );
 
     return res.json({
       success: true,
       city: normalizedCity,
-      raw: data, // 想除錯時可以看，前端實際上用不到
+      raw: data,
     });
   } catch (error) {
-    console.error("Reverse geocode 失敗:", error.message);
+    console.error("[reverseGeocode] 發生錯誤:", error.message);
 
     if (error.response) {
-      const respData = error.response.data || {};
+      console.error(
+        "[reverseGeocode] HTTP 狀態碼:",
+        error.response.status
+      );
+      console.error("[reverseGeocode] 回應內容:", error.response.data);
+
+      const respData = error.response.data;
+      let msg = "無法取得縣市資訊";
+
+      if (typeof respData === "string") {
+        msg = respData;
+      } else if (respData && respData.error) {
+        msg = respData.error;
+      }
+
       return res.status(error.response.status).json({
         success: false,
         error: "ReverseGeocode API 錯誤",
-        message: respData.error || "無法取得縣市資訊",
+        message: msg,
       });
     }
 
