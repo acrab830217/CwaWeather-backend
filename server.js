@@ -16,12 +16,13 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /**
- * 取得高雄天氣預報
- * CWA 氣象資料開放平臺 API
- * 使用「一般天氣預報-今明 36 小時天氣預報」資料集
+ * 依城市名稱取得今明 36 小時天氣預報
+ * 使用 CWA「一般天氣預報-今明 36 小時天氣預報」資料集
+ * 範例：/api/weather?city=高雄市
  */
 const getWeatherByCity = async (req, res) => {
   try {
+    // 檢查是否有設定 API Key
     if (!CWA_API_KEY) {
       return res.status(500).json({
         error: "伺服器設定錯誤",
@@ -29,7 +30,7 @@ const getWeatherByCity = async (req, res) => {
       });
     }
 
-    // 1️⃣ 從網址拿 city，例如 ?city=高雄市
+    // 從 querystring 取得城市名稱，例如 ?city=高雄市
     const city = req.query.city;
 
     if (!city) {
@@ -39,7 +40,7 @@ const getWeatherByCity = async (req, res) => {
       });
     }
 
-    // 2️⃣ 呼叫 CWA API，帶入 city
+    // 呼叫 CWA API
     const response = await axios.get(
       `${CWA_API_BASE_URL}/v1/rest/datastore/F-C0032-001`,
       {
@@ -50,104 +51,24 @@ const getWeatherByCity = async (req, res) => {
       }
     );
 
-    const locationData = response.data.records.location[0];
+    const records = response.data.records;
 
-    if (!locationData) {
+    if (!records || !records.location || records.location.length === 0) {
       return res.status(404).json({
         error: "查無資料",
         message: `無法取得 ${city} 天氣資料`,
       });
     }
 
-    // 3️⃣ 整理回傳資料（這段跟你原本的幾乎一樣）
-    const weatherData = {
-      city: locationData.locationName,
-      updateTime: response.data.records.datasetDescription,
-      forecasts: [],
-    };
-
-    const weatherElements = locationData.weatherElement;
-    const timeCount = weatherElements[0].time.length;
-
-    for (let i = 0; i < timeCount; i++) {
-      const forecast = {
-        startTime: weatherElements[0].time[i].startTime,
-        endTime: weatherElements[0].time[i].endTime,
-        weather: "",
-        rain: "",
-        minTemp: "",
-        maxTemp: "",
-        comfort: "",
-        windSpeed: "",
-      };
-
-      weatherElements.forEach((element) => {
-        const value = element.time[i].parameter;
-        switch (element.elementName) {
-          case "Wx":
-            forecast.weather = value.parameterName;
-            break;
-          case "PoP":
-            forecast.rain = value.parameterName + "%";
-            break;
-          case "MinT":
-            forecast.minTemp = value.parameterName + "°C";
-            break;
-          case "MaxT":
-            forecast.maxTemp = value.parameterName + "°C";
-            break;
-          case "CI":
-            forecast.comfort = value.parameterName;
-            break;
-          case "WS":
-            forecast.windSpeed = value.parameterName;
-            break;
-        }
-      });
-
-      weatherData.forecasts.push(forecast);
-    }
-
-    res.json({
-      success: true,
-      data: weatherData,
-    });
-  } catch (error) {
-    console.error("取得天氣資料失敗:", error.message);
-
-    if (error.response) {
-      return res.status(error.response.status).json({
-        error: "CWA API 錯誤",
-        message: error.response.data.message || "無法取得天氣資料",
-        details: error.response.data,
-      });
-    }
-
-    res.status(500).json({
-      error: "伺服器錯誤",
-      message: "無法取得天氣資料，請稍後再試",
-    });
-  }
-};
-
-    // 取得高雄市的天氣資料
-    const locationData = response.data.records.location[0];
-
-    if (!locationData) {
-      return res.status(404).json({
-        error: "查無資料",
-        message: "無法取得高雄市天氣資料",
-      });
-    }
+    const locationData = records.location[0];
 
     // 整理天氣資料
     const weatherData = {
       city: locationData.locationName,
-      updateTime: response.data.records.datasetDescription,
+      updateTime: records.datasetDescription,
       forecasts: [],
     };
 
-    // 解析天氣要素
     const weatherElements = locationData.weatherElement;
     const timeCount = weatherElements[0].time.length;
 
@@ -190,7 +111,7 @@ const getWeatherByCity = async (req, res) => {
       weatherData.forecasts.push(forecast);
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: weatherData,
     });
@@ -201,13 +122,13 @@ const getWeatherByCity = async (req, res) => {
       // API 回應錯誤
       return res.status(error.response.status).json({
         error: "CWA API 錯誤",
-        message: error.response.data.message || "無法取得天氣資料",
+        message: error.response.data?.message || "無法取得天氣資料",
         details: error.response.data,
       });
     }
 
     // 其他錯誤
-    res.status(500).json({
+    return res.status(500).json({
       error: "伺服器錯誤",
       message: "無法取得天氣資料，請稍後再試",
     });
@@ -219,8 +140,10 @@ app.get("/", (req, res) => {
   res.json({
     message: "歡迎使用 CWA 天氣預報 API",
     endpoints: {
-      kaohsiung: "/api/weather/kaohsiung",
+      // 範例：/api/weather?city=高雄市
+      weather: "/api/weather?city=高雄市",
       health: "/api/health",
+      kaohsiungShortcut: "/api/weather/kaohsiung",
     },
   });
 });
@@ -231,6 +154,12 @@ app.get("/api/health", (req, res) => {
 
 // 通用：依城市取得天氣，例如 /api/weather?city=高雄市
 app.get("/api/weather", getWeatherByCity);
+
+// 範例：固定高雄市的捷徑路徑（可用可不用）
+app.get("/api/weather/kaohsiung", (req, res) => {
+  req.query.city = "高雄市";
+  getWeatherByCity(req, res);
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -249,6 +178,6 @@ app.use((req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 伺服器運行已運作`);
+  console.log(`🚀 伺服器運行已運作，PORT: ${PORT}`);
   console.log(`📍 環境: ${process.env.NODE_ENV || "development"}`);
 });
