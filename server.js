@@ -229,8 +229,14 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "OK", timestamp: new Date().toISOString() });
 });
 
-// 取得高雄天氣預報
-app.get("/api/weather/kaohsiung", getKaohsiungWeather);
+// 通用：依城市取得天氣，例如 /api/weather?city=高雄市
+app.get("/api/weather", getWeatherByCity);
+
+// 如果你想保留舊的 /kaohsiung 路徑，也可以這樣接回來：
+app.get("/api/weather/kaohsiung", (req, res, next) => {
+  req.query.city = "高雄市";
+  getWeatherByCity(req, res, next);
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
