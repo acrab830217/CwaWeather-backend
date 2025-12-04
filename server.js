@@ -1,4 +1,13 @@
-require("dotenv").config();
+const path = require("path");
+const dotenv = require("dotenv");
+
+// 明確指定 .env 路徑（在跟這支 server.js 同一層時）
+dotenv.config({
+  path: path.resolve(__dirname, ".env"),
+});
+
+console.log("DEBUG CWA_API_KEY 是否存在？", !!process.env.CWA_API_KEY);
+
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
