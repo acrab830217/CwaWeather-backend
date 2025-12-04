@@ -1,19 +1,13 @@
-const path = require("path");
-const dotenv = require("dotenv");
-
-// 明確指定 .env 路徑（在跟這支 server.js 同一層時）
-dotenv.config({
-  path: path.resolve(__dirname, ".env"),
-});
-
-console.log("DEBUG CWA_API_KEY 是否存在？", !!process.env.CWA_API_KEY);
-
+// server.js
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+
+// ✅ 先固定用 3000，避免跟環境變數打架
+const PORT = 3000;
 
 // CWA API 設定
 const CWA_API_BASE_URL = "https://opendata.cwa.gov.tw/api";
@@ -27,7 +21,7 @@ app.use(express.urlencoded({ extended: true }));
 /**
  * 依城市名稱取得今明 36 小時天氣預報
  * 使用 CWA「一般天氣預報-今明 36 小時天氣預報」資料集
- * 範例：/api/weather?city=高雄市
+ * 範例：/api/weather?city=桃園市
  */
 const getWeatherByCity = async (req, res) => {
   try {
@@ -45,7 +39,7 @@ const getWeatherByCity = async (req, res) => {
       return res.status(400).json({
         success: false,
         error: "參數錯誤",
-        message: "請在查詢字串提供 city，例如 ?city=高雄市",
+        message: "請在查詢字串提供 city，例如 ?city=桃園市",
       });
     }
 
@@ -109,7 +103,6 @@ const getWeatherByCity = async (req, res) => {
           case "CI":
             forecast.comfort = value.parameterName;
             break;
-          // ✅ F-C0032-001 沒有風速欄位，已移除 WS
         }
       });
 
@@ -145,7 +138,7 @@ app.get("/", (req, res) => {
   res.json({
     message: "歡迎使用 CWA 天氣預報 API",
     endpoints: {
-      weather: "/api/weather?city=高雄市",
+      weather: "/api/weather?city=桃園市",
       health: "/api/health",
     },
   });
@@ -158,17 +151,7 @@ app.get("/api/health", (req, res) => {
 // 通用：依城市取得天氣
 app.get("/api/weather", getWeatherByCity);
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    success: false,
-    error: "伺服器錯誤",
-    message: err.message,
-  });
-});
-
-// 404 handler
+// 404 handler（放在最後）
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -176,6 +159,7 @@ app.use((req, res) => {
   });
 });
 
+// 啟動伺服器
 app.listen(PORT, () => {
   console.log(`🚀 伺服器運行已運作，PORT: ${PORT}`);
   console.log(`📍 環境: ${process.env.NODE_ENV || "development"}`);
