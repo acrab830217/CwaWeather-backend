@@ -14,7 +14,15 @@ const CWA_API_BASE_URL = "https://opendata.cwa.gov.tw/api";
 const CWA_API_KEY = process.env.CWA_API_KEY;
 
 // Middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5500",
+      "http://127.0.0.1:5500",
+      "https://acrab830217.github.io",  // 你的 GitHub Pages 網址
+    ],
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
