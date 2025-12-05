@@ -6,8 +6,8 @@ const axios = require("axios");
 
 const app = express();
 
-// ✅ 先固定用 3000，避免跟環境變數打架
-const PORT = 3000;
+// ✅ 雲端部署 一定要優先用 process.env.PORT
+const PORT = process.env.PORT || 3000;
 
 // CWA API 設定
 const CWA_API_BASE_URL = "https://opendata.cwa.gov.tw/api";
@@ -19,7 +19,7 @@ app.use(
     origin: [
       "http://localhost:5500",
       "http://127.0.0.1:5500",
-      "https://acrab830217.github.io",  // 你的 GitHub Pages 網址
+      "https://acrab830217.github.io", // GitHub Pages
     ],
   })
 );
@@ -28,7 +28,7 @@ app.use(express.urlencoded({ extended: true }));
 
 /**
  * 依城市名稱取得今明 36 小時天氣預報
- * 使用 CWA「一般天氣預報-今明 36 小時天氣預報」資料集
+ * CWA「一般天氣預報-今明 36 小時天氣預報」資料集
  * 範例：/api/weather?city=桃園市
  */
 const getWeatherByCity = async (req, res) => {
